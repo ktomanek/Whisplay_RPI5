@@ -1,4 +1,8 @@
 pygame
 Pillow
 spidev
-gpiod
+# Raspberry Pi 5 (gpiozero + lgpio backend)
+gpiozero
+lgpio
+# Radxa boards (libgpiod)
+# gpiod  # install via: sudo apt install python3-libgpiod

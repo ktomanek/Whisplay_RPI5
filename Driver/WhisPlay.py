@@ -1,6 +1,5 @@
 import spidev
 import time
-import os
 import threading
 
 
@@ -34,13 +33,26 @@ PLATFORM, PLATFORM_MODEL = _detect_platform()
 
 # Import GPIO library based on platform
 if PLATFORM == "rpi":
-    import RPi.GPIO as GPIO
+    from gpiozero import DigitalOutputDevice, PWMLED, Button
+    from gpiozero.pins.lgpio import LGPIOFactory
+    from gpiozero import Device
+    # Use lgpio backend for Pi 5 compatibility
+    try:
+        Device.pin_factory = LGPIOFactory()
+    except Exception:
+        pass  # Fall back to default factory
 elif PLATFORM == "radxa":
     import gpiod
 else:
     # Try auto-detection via available libraries
     try:
-        import RPi.GPIO as GPIO
+        from gpiozero import DigitalOutputDevice, PWMLED, Button
+        from gpiozero.pins.lgpio import LGPIOFactory
+        from gpiozero import Device
+        try:
+            Device.pin_factory = LGPIOFactory()
+        except Exception:
+            pass
         PLATFORM = "rpi"
         PLATFORM_MODEL = "Unknown Raspberry Pi"
     except ImportError:
@@ -51,7 +63,7 @@ else:
         except ImportError:
             raise RuntimeError(
                 "No supported GPIO library found.\n"
-                "Raspberry Pi: pip install RPi.GPIO\n"
+                "Raspberry Pi: pip install gpiozero lgpio\n"
                 "Radxa: sudo apt install python3-libgpiod"
             )
 
@@ -99,6 +111,23 @@ def _detect_radxa_board():
         pass
     # Default to zero3w for backward compatibility
     return "zero3w"
+
+
+# ==================== gpiozero PWM Wrapper ====================
+class _GpioZeroPWMWrapper:
+    """Wrapper to make gpiozero PWMLED compatible with SoftPWM interface"""
+
+    def __init__(self, pwmled):
+        self._pwmled = pwmled
+
+    def start(self, duty_cycle=0):
+        self._pwmled.value = duty_cycle / 100.0
+
+    def ChangeDutyCycle(self, duty_cycle):
+        self._pwmled.value = max(0.0, min(1.0, duty_cycle / 100.0))
+
+    def stop(self):
+        self._pwmled.off()
 
 
 # ==================== Software PWM ====================
@@ -196,27 +225,28 @@ class WhisPlayBoard:
 
     # ==================== Raspberry Pi Initialization ====================
     def _init_rpi(self):
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setwarnings(False)
+        # Initialize LCD pins using gpiozero (BOARD pin format)
+        self._dc_device = DigitalOutputDevice(f"BOARD{self.DC_PIN}")
+        self._rst_device = DigitalOutputDevice(f"BOARD{self.RST_PIN}")
+        self._led_device = DigitalOutputDevice(f"BOARD{self.LED_PIN}", active_high=False)
+        self._led_device.on()  # Enable backlight (active low)
 
-        # Initialize LCD pins
-        GPIO.setup([self.DC_PIN, self.RST_PIN, self.LED_PIN], GPIO.OUT)
-        GPIO.output(self.LED_PIN, GPIO.LOW)  # Enable backlight
-
-        # Initialize RGB LED pins
-        GPIO.setup([self.RED_PIN, self.GREEN_PIN, self.BLUE_PIN], GPIO.OUT, initial=GPIO.HIGH)
-        self.red_pwm = self._create_rpi_rgb_pwm(self.RED_PIN, "red")
-        self.green_pwm = self._create_rpi_rgb_pwm(self.GREEN_PIN, "green")
-        self.blue_pwm = self._create_rpi_rgb_pwm(self.BLUE_PIN, "blue")
+        # Initialize RGB LED pins using gpiozero PWMLED (active_high=False for common anode)
+        self._red_pwm = PWMLED(f"BOARD{self.RED_PIN}", active_high=False, frequency=100)
+        self._green_pwm = PWMLED(f"BOARD{self.GREEN_PIN}", active_high=False, frequency=100)
+        self._blue_pwm = PWMLED(f"BOARD{self.BLUE_PIN}", active_high=False, frequency=100)
+        # Create wrapper objects compatible with existing SoftPWM interface
+        self.red_pwm = _GpioZeroPWMWrapper(self._red_pwm)
+        self.green_pwm = _GpioZeroPWMWrapper(self._green_pwm)
+        self.blue_pwm = _GpioZeroPWMWrapper(self._blue_pwm)
         self.red_pwm.start(0)
         self.green_pwm.start(0)
         self.blue_pwm.start(0)
 
-        # Initialize button
-        GPIO.setup(self.BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.add_event_detect(
-            self.BUTTON_PIN, GPIO.BOTH, callback=self._button_event_rpi, bouncetime=50
-        )
+        # Initialize button using gpiozero
+        self._button = Button(f"BOARD{self.BUTTON_PIN}", pull_up=True, bounce_time=0.05)
+        self._button.when_pressed = self._button_press_event_gpiozero
+        self._button.when_released = self._button_release_event_gpiozero
 
         # Initialize SPI
         self.spi = spidev.SpiDev()
@@ -224,66 +254,15 @@ class WhisPlayBoard:
         self.spi.max_speed_hz = 100_000_000
         self.spi.mode = 0b00
 
-    def _rpi_pin_can_drive_low(self, pin):
-        """Check whether a Raspberry Pi GPIO can actually sink current when driven low."""
-        GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
-        time.sleep(0.02)
-        GPIO.output(pin, GPIO.LOW)
-        time.sleep(0.02)
-        can_drive_low = GPIO.input(pin) == GPIO.LOW
-        GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
-        return can_drive_low
+    def _button_press_event_gpiozero(self):
+        """gpiozero button press callback"""
+        if self.button_press_callback:
+            self.button_press_callback()
 
-    def _rpi_set_rgb_sink_state(self, pin, value):
-        """Drive active-low RGB LED pins using either strong-high or input-pulldown-low.
-        NOTICE: rpi-lgpio 0.2/0.6 on RPi5 RP1 has issues switching between
-        IN/OUT modes in concurrent SoftPWM threads (GPIO busy / not allocated).
-        A lock serializes access and try/except prevents thread death."""
-        if not hasattr(self, '_rgb_lock'):
-            import threading
-            self._rgb_lock = threading.Lock()
-        with self._rgb_lock:
-            try:
-                if value:
-                    GPIO.setup(pin, GPIO.OUT)
-                    GPIO.output(pin, GPIO.HIGH)
-                else:
-                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-            except Exception:
-                try:
-                    GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
-                except Exception:
-                    pass
-
-    def _rpi_set_rgb_output_state(self, pin, value):
-        """Drive active-low RGB LED pins using normal push-pull output mode."""
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
-
-    def _rpi_set_backlight_state(self, value):
-        """Drive active-low LCD backlight pin using plain GPIO state changes."""
-        GPIO.setup(self.LED_PIN, GPIO.OUT)
-        GPIO.output(self.LED_PIN, GPIO.HIGH if value else GPIO.LOW)
-
-    def _create_rpi_rgb_pwm(self, pin, color_name):
-        """Create RGB PWM on Raspberry Pi, with a weak sink fallback for damaged GPIO pins."""
-        if self._rpi_pin_can_drive_low(pin):
-            return SoftPWM(
-                lambda value, gpio_pin=pin: self._rpi_set_rgb_output_state(gpio_pin, value),
-                100,
-                stop_value=1,
-            )
-
-        print(
-            f"Warning: GPIO pin {pin} for {color_name} LED cannot drive LOW reliably; "
-            "using input-pulldown RGB workaround."
-        )
-        self._rpi_set_rgb_sink_state(pin, 1)
-        return SoftPWM(
-            lambda value, gpio_pin=pin: self._rpi_set_rgb_sink_state(gpio_pin, value),
-            100,
-            stop_value=1,
-        )
+    def _button_release_event_gpiozero(self):
+        """gpiozero button release callback"""
+        if self.button_release_callback:
+            self.button_release_callback()
 
     # ==================== Radxa Initialization ====================
     def _init_radxa(self):
@@ -396,14 +375,22 @@ class WhisPlayBoard:
     def _gpio_output(self, pin, value):
         """Set GPIO pin output value"""
         if self.platform == "rpi":
-            GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+            # Map pin to gpiozero device
+            if pin == self.DC_PIN:
+                self._dc_device.value = 1 if value else 0
+            elif pin == self.RST_PIN:
+                self._rst_device.value = 1 if value else 0
+            elif pin == self.LED_PIN:
+                self._led_device.value = 1 if value else 0
         elif self.platform == "radxa":
             self._gpio_lines[pin].set_value(1 if value else 0)
 
     def _gpio_input(self, pin):
         """Read GPIO pin input value"""
         if self.platform == "rpi":
-            return GPIO.input(pin)
+            if pin == self.BUTTON_PIN:
+                return 1 if self._button.is_pressed else 0
+            return 0
         elif self.platform == "radxa":
             return self._gpio_lines[pin].get_value()
 
@@ -450,11 +437,11 @@ class WhisPlayBoard:
         if self.backlight_mode:  # PWM mode
             if self.backlight_pwm is None:
                 if self.platform == "rpi":
-                    self.backlight_pwm = SoftPWM(
-                        self._rpi_set_backlight_state,
-                        1000,
-                        stop_value=1,
-                    )
+                    # For gpiozero, create a PWMLED wrapper for backlight
+                    self._backlight_pwmled = PWMLED(f"BOARD{self.LED_PIN}", active_high=False, frequency=1000)
+                    self.backlight_pwm = _GpioZeroPWMWrapper(self._backlight_pwmled)
+                    # Close the original DigitalOutputDevice
+                    self._led_device.close()
                 elif self.platform == "radxa":
                     led_line = self._gpio_lines[self.LED_PIN]
                     self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
@@ -478,11 +465,10 @@ class WhisPlayBoard:
 
         if mode:  # Switch to PWM mode
             if self.platform == "rpi":
-                self.backlight_pwm = SoftPWM(
-                    self._rpi_set_backlight_state,
-                    1000,
-                    stop_value=1,
-                )
+                self._backlight_pwmled = PWMLED(f"BOARD{self.LED_PIN}", active_high=False, frequency=1000)
+                self.backlight_pwm = _GpioZeroPWMWrapper(self._backlight_pwmled)
+                if hasattr(self, '_led_device') and self._led_device:
+                    self._led_device.close()
             elif self.platform == "radxa":
                 led_line = self._gpio_lines[self.LED_PIN]
                 self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
@@ -664,24 +650,6 @@ class WhisPlayBoard:
     def on_button_release(self, callback):
         self.button_release_callback = callback
 
-    def _button_release_event(self, channel):
-        if self.button_release_callback:
-            self.button_release_callback()
-
-    def _button_press_event(self, channel):
-        if self.button_press_callback:
-            self.button_press_callback()
-
-    def _button_event_rpi(self, channel):
-        """Raspberry Pi button interrupt callback"""
-        # Pressed = 5V, released = 0V
-        if GPIO.input(channel):
-            # Button pressed
-            self._button_press_event(channel)
-        else:
-            # Button released
-            self._button_release_event(channel)
-
     # ========== Cleanup ==========
     def cleanup(self):
         # Stop backlight PWM
@@ -695,7 +663,17 @@ class WhisPlayBoard:
         self.blue_pwm.stop()
 
         if self.platform == "rpi":
-            GPIO.cleanup()
+            # Close gpiozero devices
+            self._dc_device.close()
+            self._rst_device.close()
+            if hasattr(self, '_backlight_pwmled'):
+                self._backlight_pwmled.close()
+            else:
+                self._led_device.close()
+            self._red_pwm.close()
+            self._green_pwm.close()
+            self._blue_pwm.close()
+            self._button.close()
         elif self.platform == "radxa":
             # Stop button listener thread
             self._btn_thread_running = False
