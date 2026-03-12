@@ -51,6 +51,7 @@ def get_ffmpeg_cmd(video_path, width, height):
 def play_video(video_path):
     board = WhisPlayBoard()
     board.set_backlight(100)
+    board.set_rgb(0, 255, 0)  # Green LED while playing
 
     width, height = board.LCD_WIDTH, board.LCD_HEIGHT
     frame_size = width * height * 2
@@ -102,6 +103,7 @@ def play_video(video_path):
         except Exception:
             pass
         gc.enable()
+        board.set_rgb(0, 0, 0)  # Turn off LED
         board.cleanup()
         print("Exit.")
 
