@@ -58,7 +58,8 @@ def play_video(video_path):
 
     def start_process():
         cmd = get_ffmpeg_cmd(video_path, width, height)
-        return subprocess.Popen(cmd, stdout=subprocess.PIPE, bufsize=frame_size)
+        print(f"CMD: {' '.join(cmd)}")
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=frame_size)
 
     process = start_process()
 
@@ -66,10 +67,13 @@ def play_video(video_path):
     gc.disable()
 
     print(f"Playing (loop): {video_path}. Press Ctrl+C to exit.")
+    print(f"Frame size: {frame_size}, Display: {width}x{height}")
+    frame_count = 0
     try:
         while True:
             read = process.stdout.readinto(buffer)
             if read != frame_size:
+                print(f"Read {read} bytes, expected {frame_size}, restarting...")
                 # reached EOF or error -> restart the ffmpeg process to loop
                 try:
                     process.kill()
@@ -82,6 +86,9 @@ def play_video(video_path):
                 # restart
                 process = start_process()
                 continue
+            frame_count += 1
+            if frame_count <= 3 or frame_count % 100 == 0:
+                print(f"Frame {frame_count}")
             board.draw_image(0, 0, width, height, buffer)
     except KeyboardInterrupt:
         print("\nStopped.")
