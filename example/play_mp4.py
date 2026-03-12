@@ -43,7 +43,7 @@ def get_ffmpeg_cmd(video_path, width, height):
         '-vf', vf_params,
         '-vcodec', 'rawvideo',
         '-pix_fmt', 'rgb565be',
-        '-f', 'image2pipe',
+        '-f', 'rawvideo',
         '-loglevel', 'quiet',
         '-'
     ]
