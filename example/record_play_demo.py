@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Whisplay Recording & Playback Demo — Radxa ZERO 3W / Raspberry Pi
+Whisplay Recording & Playback Demo
 
 Features:
   - Press button once: start recording (LCD shows recording screen, LED red blink)
@@ -11,13 +11,11 @@ Dependencies:
   sudo apt install python3-pil alsa-utils
 
 Usage:
-  cd example
-  sudo python3 record_play_demo.py
+  python record_play_demo.py
   # Or specify sound card:
-  sudo python3 record_play_demo.py --card 1
+  python record_play_demo.py --card 1
 """
 
-import sys
 import os
 import time
 import argparse
@@ -25,7 +23,6 @@ import threading
 import subprocess
 import signal
 
-sys.path.append(os.path.abspath("../Driver"))
 from WhisPlay import WhisPlayBoard
 
 from PIL import Image, ImageDraw, ImageFont

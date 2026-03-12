@@ -1,20 +1,10 @@
 import subprocess
 import os
-import sys
 import gc
 import shutil
 import argparse
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-try:
-    from Driver.WhisPlay import WhisPlayBoard
-except ImportError:
-    print("Error: Library 'Driver/WhisPlay.py' not found.")
-    sys.exit(1)
+from WhisPlay import WhisPlayBoard
 
 def get_ffmpeg_cmd(video_path, width, height):
     model = "generic"

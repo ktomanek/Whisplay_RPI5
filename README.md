@@ -42,13 +42,22 @@ source venv/bin/activate
 
 The `--system-site-packages` flag allows the venv to use apt-installed packages (like `python3-lgpio`) which are difficult to build via pip.
 
-## Demos
+Install the WhisPlay package:
 
-From the `Driver/` folder:
+```bash
+pip install -e .
+```
+
+Now you can import `WhisPlayBoard` from any Python script:
+
+```python
+from WhisPlay import WhisPlayBoard
+```
+
+## Demos
 
 ```bash
 cd Driver
-source ../venv/bin/activate
 
 # Display gradient image
 python demo_hat.py
@@ -65,6 +74,17 @@ python demo_image.py --file /path/to/image.png
 # Display text
 python demo_text.py --text "Hello World"
 python demo_text.py --text "Warning!" --bg red --fg white
+
+# Random numbers until button pressed
+python demo_interrupt.py
+```
+
+### Video playback
+
+```bash
+sudo apt install ffmpeg
+cd example
+python play_mp4.py --file /path/to/video.mp4
 ```
 
 
@@ -76,5 +96,6 @@ For WM8960 audio support, see [README_orig.md](README_orig.md) for installation 
 
 - Replaced `RPi.GPIO` with `gpiozero` for Raspberry Pi 5 compatibility
 - Uses `lgpio` backend (native RP1 support)
-- Removed Radxa-specific code from main documentation (still available in original)
-- Added demo scripts: `demo_hat.py`, `demo_led.py`, `demo_button.py`, `demo_image.py`, `demo_text.py`
+- Removed Radxa support (Pi 5 only)
+- Added `setup.py` for pip installation
+- Added demo scripts: `demo_hat.py`, `demo_led.py`, `demo_button.py`, `demo_image.py`, `demo_text.py`, `demo_interrupt.py`

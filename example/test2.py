@@ -1,17 +1,10 @@
 from time import sleep
 from PIL import Image
-import sys
 import os
 import argparse
 import subprocess
 
-# Import driver
-sys.path.append(os.path.abspath("../Driver"))
-try:
-    from WhisPlay import WhisPlayBoard
-except ImportError:
-    print("Error: WhisPlay driver not found.")
-    sys.exit(1)
+from WhisPlay import WhisPlayBoard
 
 # Initialize hardware
 board = WhisPlayBoard()
