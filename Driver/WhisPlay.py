@@ -437,11 +437,11 @@ class WhisPlayBoard:
         if self.backlight_mode:  # PWM mode
             if self.backlight_pwm is None:
                 if self.platform == "rpi":
+                    # Close the original DigitalOutputDevice first to release the pin
+                    self._led_device.close()
                     # For gpiozero, create a PWMLED wrapper for backlight
                     self._backlight_pwmled = PWMLED(f"BOARD{self.LED_PIN}", active_high=False, frequency=1000)
                     self.backlight_pwm = _GpioZeroPWMWrapper(self._backlight_pwmled)
-                    # Close the original DigitalOutputDevice
-                    self._led_device.close()
                 elif self.platform == "radxa":
                     led_line = self._gpio_lines[self.LED_PIN]
                     self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)
@@ -465,10 +465,11 @@ class WhisPlayBoard:
 
         if mode:  # Switch to PWM mode
             if self.platform == "rpi":
-                self._backlight_pwmled = PWMLED(f"BOARD{self.LED_PIN}", active_high=False, frequency=1000)
-                self.backlight_pwm = _GpioZeroPWMWrapper(self._backlight_pwmled)
+                # Close the original DigitalOutputDevice first to release the pin
                 if hasattr(self, '_led_device') and self._led_device:
                     self._led_device.close()
+                self._backlight_pwmled = PWMLED(f"BOARD{self.LED_PIN}", active_high=False, frequency=1000)
+                self.backlight_pwm = _GpioZeroPWMWrapper(self._backlight_pwmled)
             elif self.platform == "radxa":
                 led_line = self._gpio_lines[self.LED_PIN]
                 self.backlight_pwm = SoftPWM(led_line.set_value, 1000, stop_value=1)

@@ -1,10 +1,12 @@
-# WhisPlay
+# WhisPlay for Raspberry Pi 5
+
+Modified original repo to
 
 Python module for the WhisPlay HAT display board. Supports Raspberry Pi 5 and Radxa boards.
 
 ## Hardware Setup
 
-### Raspberry Pi 5
+### 
 
 Enable SPI:
 
@@ -30,11 +32,6 @@ sudo apt install python3-spidev
 pip install gpiozero lgpio spidev
 ```
 
-### Radxa Boards
-
-```bash
-sudo apt install python3-libgpiod python3-spidev
-```
 
 ## Usage
 
