@@ -90,7 +90,7 @@ def play_video(video_path):
             frame_count += 1
             if frame_count <= 3 or frame_count % 100 == 0:
                 print(f"Frame {frame_count}")
-            board.draw_image(0, 0, width, height, buffer)
+            board.draw_image(0, 0, width, height, list(buffer))
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
