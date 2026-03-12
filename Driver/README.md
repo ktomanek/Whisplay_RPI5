@@ -1,12 +1,10 @@
 # WhisPlay for Raspberry Pi 5
 
-Modified original repo to
+Modified from the original repo to use gpiozero instead of RPi.GPIO for native Pi 5 support.
 
-Python module for the WhisPlay HAT display board. Supports Raspberry Pi 5 and Radxa boards.
+Python module for the WhisPlay HAT display board.
 
 ## Hardware Setup
-
-### 
 
 Enable SPI:
 
@@ -25,35 +23,55 @@ Then reboot.
 
 ## Installation
 
-### Raspberry Pi 5
+Install system packages:
 
 ```bash
-sudo apt install python3-spidev
-pip install gpiozero lgpio spidev
+sudo apt install python3-lgpio python3-gpiozero python3-spidev
 ```
 
+Create a virtual environment with access to system packages:
+
+```bash
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+```
+
+The `--system-site-packages` flag allows the venv to use apt-installed packages (like `python3-lgpio`) which are difficult to build via pip.
+
+## Demos
+
+From the Driver folder:
+
+```bash
+cd Driver
+source venv/bin/activate
+
+# Display gradient image
+python demo_hat.py
+
+# Cycle through LED colors
+python demo_led.py
+
+# Button press changes LED color
+python demo_button.py
+```
 
 ## Usage
 
-From the `example/` folder or any script that adds the Driver path:
-
 ```python
-import sys, os
-sys.path.append(os.path.abspath("../Driver"))
 from WhisPlay import WhisPlayBoard
 
 board = WhisPlayBoard()
 board.set_backlight(80)
 board.fill_screen(0x001F)  # Blue
+board.set_rgb(255, 0, 0)   # Red LED
 board.cleanup()
 ```
 
-## Demo
+From the `example/` folder:
 
-From the Driver folder:
-
-```bash
-python demo_hat.py
+```python
+import sys, os
+sys.path.append(os.path.abspath("../Driver"))
+from WhisPlay import WhisPlayBoard
 ```
-
-Displays a gradient image. Press Ctrl+C to exit.
